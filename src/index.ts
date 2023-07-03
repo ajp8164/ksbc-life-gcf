@@ -26,7 +26,7 @@ exports.sendChatMessagePushNotification = functions.firestore
             const userRef = db.doc(`Users/${memberId}`);
             const user = (await userRef.get()).data();
             // Author doesn't get a push notification on their own message.
-            if (user && user.author.id !== authorId) {
+            if (user && user.id !== authorId) {
               user.pushTokens.forEach((t: string) => {
                 tokens.push(t);
               });
