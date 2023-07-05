@@ -29,7 +29,7 @@ exports.sendChatMessagePushNotification = functions.firestore
 
             // Author doesn't get a push notification on their own message.
             if (user && user.id !== authorId) {
-              user.pushTokens.forEach((t: string) => {
+              user.notifications.pushTokens.forEach((t: string) => {
                 tokens.push(t);
               });
 
