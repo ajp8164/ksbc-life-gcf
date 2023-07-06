@@ -1,7 +1,7 @@
 import * as admin from 'firebase-admin';
 import * as functions from 'firebase-functions';
 
-import { Message } from 'firebase-admin/lib/messaging/messaging-api';
+import { TokenMessage } from 'firebase-admin/lib/messaging/messaging-api';
 
 admin.initializeApp(functions.config().firebase);
 const db = admin.firestore();
@@ -16,7 +16,7 @@ exports.sendChatMessagePushNotification = functions.firestore
     const groupRef = db.doc(`Groups/${groupId}`);
     const group = (await groupRef.get()).data();
 
-    const messages: Message[] = [];
+    const messages: TokenMessage[] = [];
 
     const recipientPromises: Promise<void>[] = [];
     (group?.members as string[]).forEach(memberId => {
@@ -106,10 +106,17 @@ exports.sendChatMessagePushNotification = functions.firestore
           .messaging()
           .sendEach(messages)
           .then(response => {
-            // Ignoring send failures for now.
             console.log(
               `Chat Push Notifications: ${response.successCount} sent, ${response.failureCount} failed`,
             );
+            for (let i = 0; i < response.responses.length; i++) {
+              const r = response.responses[i];
+              if (r.error) {
+                console.error(
+                  `${r.error.code} - ${r.error.message} / ${messages[i].token}`,
+                );
+              }
+            }
           });
       }
     }
