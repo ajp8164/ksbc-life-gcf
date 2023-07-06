@@ -23,39 +23,40 @@ exports.sendChatMessagePushNotification = functions.firestore
       recipientPromises.push(
         new Promise<void>((resolve, _reject) => {
           (async () => {
-            const tokens: string[] = [];
             const userRef = db.doc(`Users/${memberId}`);
             const user = (await userRef.get()).data();
 
             // Author doesn't get a push notification on their own message.
-            if (user && user.id !== authorId) {
-              user.notifications.pushTokens.forEach((t: string) => {
-                tokens.push(t);
-              });
+            // The recipient must have push tokens.
+            if (
+              user &&
+              user.id !== authorId &&
+              user.notifications.pushTokens.length > 0
+            ) {
+              // Increment the users badge count.
+              const badgeCount = user.notifications?.badgeCount + 1 || 0;
 
-              if (tokens[0]) {
-                // Increment the users badge count.
-                const badgeCount = user.notifications?.badgeCount + 1 || 0;
+              // Create the message.
+              const title = `${chatMessage.author.firstName} ${chatMessage.author.lastName}`;
+              let body = 'New message';
+              let imageUrl: string;
 
-                // Create the message.
-                const title = `${chatMessage.author.firstName} ${chatMessage.author.lastName}`;
-                let body = 'New message';
-                let imageUrl;
+              if (chatMessage?.type === 'text') {
+                body = chatMessage.text;
+              } else if (chatMessage?.type === 'file') {
+                body = 'Attachment: File';
+              } else if (chatMessage?.type === 'image') {
+                body = 'Attachment: Image';
+                imageUrl = chatMessage.uri;
+              } else if (chatMessage?.type === 'video') {
+                body = 'Attachment: Video';
+                imageUrl = chatMessage.posterUri;
+              }
 
-                if (chatMessage?.type === 'text') {
-                  body = chatMessage.text;
-                } else if (chatMessage?.type === 'file') {
-                  body = 'Attachment: File';
-                } else if (chatMessage?.type === 'image') {
-                  body = 'Attachment: Image';
-                  imageUrl = chatMessage.uri;
-                } else if (chatMessage?.type === 'video') {
-                  body = 'Attachment: Video';
-                  imageUrl = chatMessage.posterUri;
-                }
-
+              // Send the notification to each registered device.
+              user.notifications.pushTokens.forEach((token: string) => {
                 messages.push({
-                  token: tokens[0],
+                  token,
                   notification: {
                     title,
                     body,
@@ -78,18 +79,18 @@ exports.sendChatMessagePushNotification = functions.firestore
                     },
                   },
                 });
+              });
 
-                // Increment the notification badge count for the user (applies mainly for iOS only).
-                const updatedUser = Object.assign({}, user); // Don't mutate input.
-                updatedUser.notifications = {
-                  ...user.notifications,
-                  badgeCount: user.notifications?.badgeCount
-                    ? user.notifications?.badgeCount + 1
-                    : 1,
-                };
+              // Increment the notification badge count for the user (applies mainly for iOS only).
+              const updatedUser = Object.assign({}, user); // Don't mutate input.
+              updatedUser.notifications = {
+                ...user.notifications,
+                badgeCount: user.notifications?.badgeCount
+                  ? user.notifications?.badgeCount + 1
+                  : 1,
+              };
 
-                userRef.update(updatedUser);
-              }
+              userRef.update(updatedUser);
             }
             resolve();
           })();
@@ -100,14 +101,16 @@ exports.sendChatMessagePushNotification = functions.firestore
     if (recipientPromises.length) {
       await Promise.all(recipientPromises);
 
-      admin
-        .messaging()
-        .sendEach(messages)
-        .then(response => {
-          // Ignoring send failures for now.
-          console.log(
-            `Chat Push Notifications: ${response.successCount} sent, ${response.failureCount} failed`,
-          );
-        });
+      if (messages.length > 0) {
+        admin
+          .messaging()
+          .sendEach(messages)
+          .then(response => {
+            // Ignoring send failures for now.
+            console.log(
+              `Chat Push Notifications: ${response.successCount} sent, ${response.failureCount} failed`,
+            );
+          });
+      }
     }
   });
